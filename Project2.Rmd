@@ -1,0 +1,283 @@
+---
+title: "Project2"
+author: "qiankang wang"
+date: "07/02/2022"
+output: pdf_document
+---
+
+# Problem 1
+
+```{r}
+# Initialization
+knitr::opts_chunk$set(fig.width=5, fig.height=3.5) 
+D = read.table("~/Desktop/Courses/631/EpidemicA2Q1.txt", header = TRUE)[1:100, 2:5]
+set.seed(2022)
+Pit = function(a, b, dists) {
+  return(1 - exp(-a * dists^(-b)))
+}
+
+```
+
+
+```{r}
+idx_1 = D[D["inftime"] == 1][1]
+idx_S2 = D["inftime"] == 0
+dists = sqrt((sweep(D["x"], 1, D[idx_1, ][["x"]]))^2 + (sweep(D["y"], 1, D[idx_1, ][["y"]]))^2)
+# Compute f
+f = function(a, b) {
+
+  return(prod(1 - Pit(a, b, dists[idx_S2])) * prod(Pit(a, b, dists[!idx_S2])))
+}
+
+# NEW function
+NEW = function() {
+  # get the f function according to given D
+  fn = function(x) {
+    return(-log(f(a = x[1], b = x[2])))
+  }
+  ret = optim(c(1.0, 1.0), fn, method = "L-BFGS-B", lower = c(0.01, 0.01), upper = c(5, 5))
+  return(ret)
+}
+
+ret = NEW()
+```
+
+The MLE for $\alpha$ and $\beta$ are[`r round(ret$par[1], 3)`, `r round(ret$par[2], 3)`] by optim function.
+
+# Problem 2
+
+## Question a
+
+Because $f(D|\alpha, \beta)$ has no constant regarding $\alpha$ and $\beta$, I don't need to remove constant from f.
+
+$$
+\begin{aligned}
+\pi(\alpha, \beta| D) &= \frac{f(\alpha, \beta, D)}{f(D)} \\
+&\propto f(D|\alpha, \beta) f(\alpha, \beta) \\
+&\propto f(D|\alpha, \beta)exp(-\frac{1}{2\sigma^2}((\alpha - 3)^2 + (\beta - 3)^2))
+\end{aligned}
+$$
+
+
+## Question b
+
+I chose to use a normal distribution as $g(x)$, so I needed to find both $\mu$ and $\sigma$ by grid method.
+
+```{r}
+# posterior density
+post = function(a, b, sigma) {
+  return(f(a, b)*exp(-1/(2*sigma^2) * ((a - 3)^2 + (b - 3)^2)))
+}
+
+#log of posterior density
+post_log = function(a, b, sigma) {
+  return(log(f(a, b)) - (1/(2*sigma^2) * ((a - 3)^2 + (b - 3)^2)))
+}
+
+x = seq(0.01, 4, 0.01)
+
+
+post_density = function(b, sigma) {
+  ys = rep(0, length(x))
+  for (i in 1:length(x)) {
+    ys[i] = post(x[i], b, sigma)
+  }
+  C = sum(ys) * 0.01
+  return(ys/C)
+}
+
+#plot density
+plot_post = function(b, sigma, sd) {
+  ys = post_density(b, sigma)
+  plot(x, ys, type = "l", ylab = "pi", xlab = "a")
+  u = x[which.max(ys)]
+  
+  gs = dnorm(x, u, sd)
+  lines(x, gs, type = "l", col = "red")
+}
+```
+
+```{r}
+#find best parameter for g(x)
+select_g = function(b, sigma) {
+  ys = post_density(b, sigma)
+  u = x[which.max(ys)]
+  sd = seq(0.01, 2, 0.01)
+  n = length(sd)
+  ret = rep(0, n)
+  for (i in 1:n) {
+    gs = dnorm(x, mean = u, sd = sd[i])
+    ret[i] = sum(abs(ys - gs))
+  }
+  return(list(u = u, sd = sd[which.min(ret)]))
+}
+ret = select_g(2, 2)
+plot_post(2, 2, ret$sd)
+gs = dnorm(x, 3, 0.8)
+lines(x, gs, type = "l", col = "blue")
+```
+
+The black line is the true density $f(x)$, the red line is the $g(x)$ I found by grid method, and the blue line is the an inefficient $g_1(x)$. The parameter for $g(x)$ is ($\mu$ = `r ret$u`, $sd$ = `r ret$sd`). We can see that distribution  of $g(x)$ is close to $f(x)$ than $g_1(x)$. So $g(x)$ give more efficient estimates.
+
+```{r}
+#compute posterior mean by importance sampling
+post_mean = function(b, sigma) {
+  ys = post_density(b, sigma)
+  u = x[which.max(ys)]
+  sd = select_g(b, sigma)$sd
+  
+  x = rnorm(1000, u, sd)
+  x = x[x > 0]
+  n = length(x)
+  fx = rep(0, n)
+  gx = rep(0, n)
+  for (i in 1:n) {
+    fx[i] = post(x[i], b, sigma)
+    gx[i] = dnorm(x[i], u, sd)
+  }
+  w = (fx/sum(fx)) / (gx/sum(gx))
+  ret = mean(w * x)
+  return(ret)
+}
+
+ret = post_mean(2, 2)
+```
+
+The mean of $E_{\pi}[\alpha|\beta = 2]$ is `r round(ret, 3)`.
+
+## Question c
+
+The idea of question c is similar:
+
+```{r}
+ret = select_g(1, 2)
+plot_post(1, 2, ret$sd)
+gs = dnorm(x, 2, 0.8)
+lines(x, gs, type = "l", col = "blue")
+```
+
+The black line is the true density $f(x)$, the red line is the $g(x)$ I found by grid method, and the blue line is the an inefficient $g_1(x)$. The parameter for $g(x)$ is ($\mu$ = `r ret$u`, $sd$ = `r ret$sd`). We can see that distribution  of $g(x)$ is close to $f(x)$ than $g_1(x)$. So $g(x)$ give more efficient estimates.
+
+```{r}
+ret = post_mean(1, 2)
+```
+
+The mean of $E_{\pi}[\alpha|\beta = 1]$ is `r round(ret, 3)`.
+
+
+# Problem 3
+
+## Question a
+
+I chose multinormal distribution to conduct importance sampling and used $\alpha_{MLE}, \beta_{MLE}$ as the mean and $\begin{bmatrix} 0.43 & 0.1 \\ 0.1 & 0.43 \end{bmatrix}$ as covariance matrix. 
+
+```{r}
+#find the mean of a and b
+find_ab = function(sigma) {
+  fn = function(x) {
+    return(-post_log(x[1], x[2], sigma = sigma))
+  }
+  ret = optim(c(2.0, 2.0), fn, method = "L-BFGS-B", lower = c(0.01, 0.01), upper = c(5, 5))
+  return(ret)
+}
+
+```
+
+
+```{r}
+library(mvtnorm)
+cov = matrix(c(0.43, 0.1, 0.1, 0.43), 2, 2)
+
+post_mean2 = function(sigma, cov) {
+  ret = find_ab(sigma)
+  x = data.frame(rmvnorm(5000, mean = ret$par, sigma = cov))
+  x = x[x[, 1] > 0 & x[, 2] > 0, ]
+  n = nrow(x)
+  fx = rep(0, n)
+  gx = dmvnorm(x, mean = ret$par, cov)
+  for (i in 1:n) {
+    fx[i] = post(x[i, 1], x[i, 2], sigma)
+  }
+  wx = (fx/sum(fx)) / (gx/sum(gx))
+  a = mean(x[, 1] * wx)
+  b = mean(x[, 2] * wx)
+  return(list(a = a, b = b))
+}
+
+
+as = rep(0, 5)
+bs = rep(0, 5)
+for (i in  1:5) {
+  ret = post_mean2(2, cov)
+  as[i] = ret$a
+  bs[i] = ret$b
+}
+
+```
+
+The mean of $E_{\pi}[\alpha]$ and $E_{\pi}[\alpha]$ are [`r round(mean(as), 3)`, `r round(mean(bs), 3)`], and the variance of $E_{\pi}[\alpha]$ and $E_{\pi}[\alpha]$ are [`r round(var(as), 3)`, `r round(var(bs), 3)`]. 
+
+## Question b
+
+```{r}
+ret = find_ab(1)
+cov = matrix(c(0.43, 0.1, 0.1, 0.43), 2, 2)
+as = rep(0, 5)
+bs = rep(0, 5)
+for (i in  1:5) {
+  ret = post_mean2(1, cov)
+  as[i] = ret$a
+  bs[i] = ret$b
+}
+```
+
+The mean of $E_{\pi}[\alpha]$ and $E_{\pi}[\alpha]$ are [`r round(mean(as), 3)`, `r round(mean(bs), 3)`], and the variance of $E_{\pi}[\alpha]$ and $E_{\pi}[\alpha]$ are [`r round(var(as), 3)`, `r round(var(bs), 3)`]. Compared with results from previous question, $\alpha$ and $\beta$ are much closer to mean of prior distribution, because of sd of prior distribution is smaller.
+
+# Problem 4
+
+```{r}
+uniform_ratio = function(b, sigma) {
+  #get h(x), f(x)
+  hx = function(a) {
+    return (post(a, 2, 2))
+  }
+  y = rep(0, length(x))
+  for (i in 1: length(x)) {
+    y[i] = hx(x[i])
+  }
+  C = sum(y) * 0.01
+  
+  fx = function(a) {
+    return (hx(a) / C)
+  }
+  
+  #find a, b1, b2
+  fn = function(a) {
+    return(-sqrt(fx(a)))
+  }
+  a = optim(2, fn, lower = 0.01, upper = 5, method = "L-BFGS-B")$par
+  a = sqrt(hx(a))
+  
+  b1 = 0
+  fn2 = function(a) {
+    return(-a^2 * fx(a))
+  }
+  b2 = optim(1, fn2, lower = 0.01, upper = 5, method = "L-BFGS-B")$par
+  b2 = sqrt(b2^2 * hx(b2))
+  
+  #step 1-3
+  U = runif(5000, min = 0, max = a)
+  V = runif(5000, min = b1, max = b2)
+  X = V / U
+  
+  temp = rep(0, 5000)
+  for (i in 1: 5000) {
+    temp[i] = hx(X[i])
+  }
+  ret = X[U^2 <= temp]
+  return(mean(ret))
+}
+ret = uniform_ratio(2, 2)
+```
+
+The mean of $E_{\pi}[\alpha|\beta = 2]$ is `r round(ret, 3)`, which is close to question2.b.

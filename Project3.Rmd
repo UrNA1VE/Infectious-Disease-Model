@@ -1,0 +1,225 @@
+---
+title: "Assignment3"
+author: "qiankang wang"
+date: "25/03/2022"
+output: pdf_document
+---
+
+# Problem 1
+
+## Question i)
+
+For $\alpha$:
+
+$$
+\begin{aligned}
+r &= \frac{p(\alpha^*| y, \beta^{(s)}) J(\alpha^{(s)}|\alpha^*)}{p(\alpha^{(s)} | y, \beta^{(s)})J(\alpha^*|\alpha^{(s)})}\\
+&= \frac{p(y| \alpha^*, \beta^{(s)}) p(\alpha^*)J(\alpha^{(s)}|\alpha^*)}{p(y| \alpha^{(s)}, \beta^{(s)}) p(\alpha^{(s)}) J(\alpha^*|\alpha^{(s)})} \\
+J(\alpha^{(s)}|\alpha^*) &\sim U(\alpha^* - 0.5, \alpha^* + 0.5)
+\end{aligned}
+$$
+
+For $\beta$:
+
+$$
+\begin{aligned}
+r &= \frac{p(\beta^*| y, \alpha^{(s + 1)}) J(\beta^{(s)}|\beta^*)}{p(\beta^{(s)} | y, \alpha^{(s + 1)})J(\beta^*|\beta^{(s)})}\\
+&= \frac{p(y| \alpha^{(s + 1)}, \beta^*) p(\beta^*) J(\beta^{(s)}|\beta^*)}{p(y| \alpha^{(s + 1)}, \beta^{(s)}) p(\beta^{(s)}) J(\beta^*|\beta^{(s)})} \\
+J(\beta^{(s)}|\beta^*) &\sim U(\beta^* - 0.5, \beta^* + 0.5)
+\end{aligned}
+$$
+
+
+```{r}
+library(HDInterval)
+knitr::opts_chunk$set(fig.width=6, fig.height=4) 
+D = read.csv("~/Desktop/Courses/631/A3Q1Epidemic.csv")
+set.seed(2022)
+Pit = function(a, b, dists) {
+  return(1 - exp(-a * dists^(-b)))
+}
+idx_1 = D[D["inftime"] == 1][1]
+idx_S2 = D["inftime"] == 0
+dists = sqrt((sweep(D["x"], 1, D[idx_1, ][["x"]]))^2 + (sweep(D["y"], 1, D[idx_1, ][["y"]]))^2)
+# Compute f
+f = function(a, b) {
+  return(prod(1 - Pit(a, b, dists[idx_S2])) * prod(Pit(a, b, dists[!idx_S2])))
+}
+
+M1 = function(n) {
+  a = runif(1, 1, 4)
+  b = runif(1, 1, 4)
+  as = rep(0, n)
+  bs = rep(0, n)
+  for (i in 1:n) {
+    while (TRUE) {
+      a_star = runif(1, a - 0.5, a + 0.5)
+      b_star = runif(1, b - 0.5, b + 0.5)
+      if (a_star > 0 & b_star > 0) {
+        break
+      }
+    }
+    
+    r = f(a_star, b) * dunif(a_star, 1, 4)/ (f(a, b) * dunif(a, 1, 4))
+    a = ifelse(runif(1) < min(r, 1), a_star, a)
+    r = f(a, b_star) * dunif(b_star, 1, 4) / (f(a, b) * dunif(b, 1, 4))
+    b = ifelse(runif(1) < min(r, 1), b_star, b)
+    as[i] = a
+    bs[i] = b
+  }
+  return(list(a = as, b = bs))
+}
+n = 10000
+ret1 = M1(n)
+```
+
+```{r}
+M_plot = function(n, ret) {
+  x = 1:n
+  plot(x, ret$a, type = "l", main = "traceplot for alpha", xlab = "iteration", ylab = "alpha")
+  plot(x, ret$b, type = "l", main = "traceplot for beta", xlab = "iteration", ylab = "beta")
+  hist(ret$a, freq = FALSE, main = "traceplot for alpha", xlab = "iteration", ylab = "alpha")
+  plot(ret$a, ret$b, type = "p", main = "joint posterior distribution", xlab = "alpha", ylab = "beta")
+  print(paste0("The mean of alpha is: ", mean(ret$a)))
+  print(paste0("The mean of beta is: ", mean(ret$b)))
+  CI = quantile(ret$a, c(0.025, 0.975))
+  print(paste0("The 95% CI of alpha is: [", CI[1], ", ", CI[2], "]"))
+  CI = quantile(ret$b, c(0.025, 0.975))
+  print(paste0("The 95% CI of beta is: [", CI[1], ", ", CI[2], "]"))
+}
+M_plot(n, ret1)
+```
+
+## Question ii)
+
+$J(\alpha) \sim U(1, 4)$ and $J(\beta) \sim U(1, 4)$.
+
+```{r}
+M2 = function(n) {
+  a = runif(1, 1, 4)
+  b = runif(1, 1, 4)
+  as = rep(0, n)
+  bs = rep(0, n)
+  for (i in 1:n) {
+    a_star = runif(1, 1, 4)
+    b_star = runif(1, 1, 4)
+    r = f(a_star, b) / f(a, b)
+    a = ifelse(runif(1) < min(r, 1), a_star, a)
+    r = f(a, b_star) / f(a, b)
+    b = ifelse(runif(1) < min(r, 1), b_star, b)
+    as[i] = a
+    bs[i] = b
+  }
+  return(list(a = as, b = bs))
+}
+ret2 = M2(n)
+```
+
+```{r}
+M_plot(n, ret2)
+```
+
+## Queation iii)
+
+We found that the mean of posterior distribution of $\alpha$ is around 2.6, and sd is 0.77. For $\beta$, mean is 3.26, and sd is 0.44. So we chose $J(\alpha) \sim N(2.6, 0.77)$ and $J(\beta) \sim N(3.26, 0.44)$.
+
+```{r}
+M3 = function(n) {
+  a = runif(1, 1, 4)
+  b = runif(1, 1, 4)
+  as = rep(0, n)
+  bs = rep(0, n)
+  for (i in 1:n) {
+    while (TRUE) {
+      a_star = rnorm(1, 2.6, 0.77)
+      b_star = rnorm(1, 3.26, 0.44)
+      if (a_star > 0 & b_star > 0) {
+        break
+      }
+    }
+    
+    r = f(a_star, b) * dnorm(a, 2.6, 0.77) * dunif(a_star, 1, 4) / (f(a, b) * dnorm(a_star, 2.6, 0.77) * dunif(a, 1, 4))
+    a = ifelse(runif(1) < min(r, 1), a_star, a)
+    r = f(a, b_star) * dnorm(b, 3.26, 0.44) * dunif(b_star, 1, 4)/ (f(a, b) * dnorm(b_star, 3.26, 0.44) * dunif(b, 1, 4))
+    b = ifelse(runif(1) < min(r, 1), b_star, b)
+    as[i] = a
+    bs[i] = b
+  }
+  return(list(a = as, b = bs))
+}
+ret3 = M3(n)
+```
+
+```{r}
+M_plot(n, ret3)
+```
+
+## Question iv)
+
+I think the algorithm in part iii) is most efficient. We can that more samples of $\alpha$ and $\beta$ distributed between 1.5-3.5 and 3.0-3.5 respectively than any other 2 method. Also we look at the HD interval of 3 methods:
+
+
+## Question v)
+
+I don't think the choice of prior is wise in this analysis. The reason is that if $a_star$ and $b_star$ are chosen outside [1, 4], the prior distribution would give 0. As a result, the ratio r could easily go to 0 or infinity, which could cause some trouble in MCMC chain.
+
+# Problem 2
+
+
+```{r}
+set.seed(2022)
+GR = function(method, n) {
+  ret1 = method(n)
+  ret2 = method(n)
+  ret3 = method(n)
+  ret4 = method(n)
+  ret5 = method(n)
+  res_a = cbind(ret1$a, ret2$a, ret3$a, ret4$a, ret5$a)
+  res_b = cbind(ret1$b, ret2$b, ret3$b, ret4$b, ret5$b)
+
+  R_a = rep(0, n - 1)
+  R_b = rep(0, n - 1)
+  for (i in 2: n) {
+    d_a = res_a[1:i, ]
+    d_b = res_b[1:i, ]
+    B_a = sum((colMeans(d_a) - mean(d_a))^2) / 4
+    B_b = sum((colMeans(d_b) - mean(d_b))^2) / 4
+    W_a = sum(mean(t(t(d_a) - colMeans(d_a))^2 * i/(i - 1)))
+    W_b = sum(mean(t(t(d_b) - colMeans(d_b))^2 * i/(i - 1)))
+    R_a[i - 1] = (i - 1) / i + B_a/(5 * W_a)
+    R_b[i - 1] = (i - 1) / i + B_b/(5 * W_b)  
+  }
+  return(list(a = R_a, b = R_b))
+}
+# GR = function(method, n, m) {
+#   s2sa = c()
+#   s2sb = c()
+#   W_a = rep(0, n - 1)
+#   W_b = c()
+#   R_a = c()
+#   R_b = c()
+#   for (j in 1:m) {
+#     ret = method(n)
+#     s2sa = c(s2sa, sum((ret$a - mean(ret$a))^2) / (n - 1))
+#     mean_a = c(mean_a, mean(ret$a))
+#     s2sb = c(s2sb, sum((ret$b - mean(ret$b))^2)/ (n - 1))
+#     mean_b = c(mean_b, mean(ret$b))
+#     if (j >= 2) {
+#       B_a = sum((mean_a - mean(mean_a))^2)/(j - 1)
+#       B_b = sum((mean_b - mean(mean_b))^2)/(j - 1)
+#       W_a = mean(s2sa)
+#       W_b = mean(s2sb)
+#       R_a = c(R_a, (n - 1)/n + B_a/(j * W_a))
+#       R_b = c(R_b, (n - 1)/n + B_b/(j * W_b))
+#     }
+#   }
+# 
+#   return(list(R_a = R_a, R_b = R_b))
+# }
+ret_GR = GR(M3, 1000)
+plot(2:1000,ret_GR$a, type = "l", col = "red", xlab = "iteration", ylab = "R")
+lines(2:1000, ret_GR$b, type = "l")
+```
+
+We can see that as the number of iteration goes to 5, the R statistics for both parameter(red for $\alpha$, black for $\beta$) reduce to 1.
+

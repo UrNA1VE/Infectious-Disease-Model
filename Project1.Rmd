@@ -1,0 +1,104 @@
+---
+title: "Project1"
+author: "qiankang wang"
+date: "20/01/2022"
+output: pdf_document
+---
+
+```{r}
+knitr::opts_chunk$set(fig.width=5, fig.height=3.5) 
+```
+
+
+## Question a
+
+### Implementation of SI spatial infectious disease model
+
+```{r}
+# infection function
+prob_infected = function(a, b, dist) {
+  return(1 - exp(-a * dist^(-b)))
+}
+
+# initialization
+X = rep(1:10, 10)
+Y = c()
+for (i in 1:10) {
+  Y = c(Y, rep(i, 10))
+}
+
+# infection one time
+infection_process = function(a, b) {
+  k = sample(1:100, 1)
+  infected = rep(0, 100)
+  infected[k] = 1
+   
+  dists = sqrt((X[k] - X)^2 + (Y[k] - Y)^2)
+  prob = prob_infected(a, b, dists)
+  idx = runif(100) <= prob
+  idx[k] = FALSE
+  infected[idx] = 2
+  return(infected)
+}
+
+# plot the infection
+plot_infection = function(a, b) {
+  infected = infection_process(a, b)
+  idx = infected == 0
+  plot(X[idx], Y[idx], type = "p", pch = ".", xlab = "x", ylab = "y")
+  points(X[!idx], Y[!idx], pch = "o", lwd = 6)
+}
+```
+
+### Four realizations of this model
+
+Big o means infection, while . means individuals not infected.
+
+```{r}
+set.seed(2022)
+plot_infection(1.5, 2.0)
+plot_infection(1.5, 2.0)
+plot_infection(1.5, 2.0)
+plot_infection(1.5, 2.0)
+
+```
+
+### A second version by counting individuals in set I2 and histogram of distribution of the number
+
+```{r}
+N = 100
+counts = rep(0, N)
+for (i in 1:N) {
+  ret = infection_process(1.5, 2.0)
+  # A second version to record the number by the initial infection 
+  counts[i] = sum(ret == 2)
+}
+hist(counts, breaks = 20, main = "The number of second infection")
+
+```
+
+## Question b
+
+```{r}
+
+as = seq(1.5, 0, -0.01)
+N = 1000
+highest_a = NULL
+
+set.seed(2022)
+for (a in as) {
+  counts = rep(0, N)
+  for (i in 1:N) {
+    counts[i] = sum(infection_process(a, 2.0) == 2)
+  }
+  if (sum(counts==0) >= 0.8*N) {
+    highest_a = a
+    break
+  }
+}
+
+print(paste0("The highest a value is ", highest_a))
+```
+
+I tested $\alpha \in [0, 1.5]$, because smaller $\alpha$ leads lower probability of infection. Also, I made the number of total simulation equals to 1000, so I only need to the largest $\alpha$ which ensured no infection over 800 times. The largest $\alpha$ is 0.02.
+
